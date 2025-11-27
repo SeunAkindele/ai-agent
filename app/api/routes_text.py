@@ -1,8 +1,5 @@
 import json, os
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from enum import Enum
 from typing import List
 
