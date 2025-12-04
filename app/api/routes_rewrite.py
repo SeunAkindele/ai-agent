@@ -12,24 +12,20 @@ router = APIRouter()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 
-
 class RewriteTone(str, Enum):
     professional = "professional"
     simple = "simple"
     casual = "casual"
     persuasive = "persuasive"
 
-
 class TextRewriteRequest(BaseModel):
     text: str
     tone: RewriteTone = RewriteTone.professional
-
 
 class TextRewriteResponse(BaseModel):
     rewritten_text: str
     # Optional: short explanation of what changed (you can remove if you don’t want it)
     notes: List[str] = []
-
 
 TEXT_REWRITE_SCHEMA = TextRewriteResponse.model_json_schema()
 
@@ -46,7 +42,6 @@ SYSTEM_PROMPT = (
     "- casual: friendly, conversational.\n"
     "- persuasive: convincing, focused on benefits and impact.\n"
 )
-
 
 @router.post("/rewrite", response_model=TextRewriteResponse)
 async def rewrite_text(payload: TextRewriteRequest):
