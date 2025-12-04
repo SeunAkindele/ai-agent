@@ -5,11 +5,13 @@ from fastapi import FastAPI
 
 from app.api.routes_summarize import router as summarize_router
 from app.api.routes_rewrite import router as rewrite_router
+from app.api.routes_pdf_qa import router as pdf_qa_router
 
 app = FastAPI(title="AI Agent")
 
 app.include_router(summarize_router, prefix="/ai-agent/v1", tags=["ai_agent"])
 app.include_router(rewrite_router, prefix="/ai-agent/v1", tags=["ai_agent"])
+app.include_router(pdf_qa_router, prefix="/ai-agent/v1", tags=["ai_agent"])
 
 @app.get("/")
 def read_root():
