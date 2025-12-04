@@ -1,0 +1,159 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Text Rewriting API",
+      "version": "1.0.0",
+      "description": "Rewrite or paraphrase text in different tones using an LLM."
+    },
+    "paths": {
+      "/ai-agent/v1/rewrite": {
+        "post": {
+          "summary": "Rewrite / Paraphrase Text",
+          "operationId": "rewriteText",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextRewriteRequest"
+                },
+                "examples": {
+                  "professionalExample": {
+                    "summary": "Professional tone",
+                    "value": {
+                      "text": "Hi, just checking if you saw my last message about the meeting.",
+                      "tone": "professional"
+                    }
+                  },
+                  "simpleExample": {
+                    "summary": "Simple tone",
+                    "value": {
+                      "text": "Our product helps businesses automate their workflows and save time.",
+                      "tone": "simple"
+                    }
+                  },
+                  "casualExample": {
+                    "summary": "Casual tone",
+                    "value": {
+                      "text": "Thank you for choosing our service. We appreciate your support.",
+                      "tone": "casual"
+                    }
+                  },
+                  "persuasiveExample": {
+                    "summary": "Persuasive tone",
+                    "value": {
+                      "text": "This software will improve your team’s productivity.",
+                      "tone": "persuasive"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful rewrite",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TextRewriteResponse"
+                  },
+                  "examples": {
+                    "success": {
+                      "summary": "Example response",
+                      "value": {
+                        "rewritten_text": "Hello, I wanted to follow up regarding my previous message about the upcoming meeting.",
+                        "notes": [
+                          "Tone adjusted to professional",
+                          "Language made more formal and polite"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request (e.g. empty text)",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  },
+                  "examples": {
+                    "emptyText": {
+                      "summary": "Empty text error",
+                      "value": {
+                        "detail": "text cannot be empty."
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Server or LLM error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  },
+                  "examples": {
+                    "llmError": {
+                      "summary": "Model or configuration error",
+                      "value": {
+                        "detail": "Rewriting failed: <details>"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "TextRewriteRequest": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "tone": {
+              "type": "string",
+              "enum": ["professional", "simple", "casual", "persuasive"],
+              "default": "professional"
+            }
+          },
+          "required": ["text"]
+        },
+        "TextRewriteResponse": {
+          "type": "object",
+          "properties": {
+            "rewritten_text": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["rewritten_text"]
+        },
+        "ErrorResponse": {
+          "type": "object",
+          "properties": {
+            "detail": {
+              "type": "string"
+            }
+          },
+          "required": ["detail"]
+        }
+      }
+    }
+  }
+  
