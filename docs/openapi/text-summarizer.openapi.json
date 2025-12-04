@@ -1,0 +1,158 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Text Summarization API",
+      "version": "1.0.0",
+      "description": "Summarize arbitrary text using an Ollama-backed LLM."
+    },
+    "paths": {
+      "/ai-agent/v1/summarize": {
+        "post": {
+          "summary": "Summarize Text",
+          "operationId": "summarizeText",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextSummarizeRequest"
+                },
+                "examples": {
+                  "shortExample": {
+                    "summary": "Short summary style",
+                    "value": {
+                      "text": "FastAPI is a modern, fast web framework for building APIs with Python.",
+                      "style": "short"
+                    }
+                  },
+                  "detailedExample": {
+                    "summary": "Detailed summary style",
+                    "value": {
+                      "text": "FastAPI is a modern, fast web framework for building APIs with Python 3.7+ based on standard type hints.",
+                      "style": "detailed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful summarization",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TextSummarizeResponse"
+                  },
+                  "examples": {
+                    "success": {
+                      "summary": "Example response",
+                      "value": {
+                        "summary": "FastAPI is a modern Python framework for building high-performance APIs using type hints.",
+                        "key_points": [
+                          "Built on standard Python type hints",
+                          "High performance with async support",
+                          "Designed for building APIs quickly"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request (e.g. empty text)",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  },
+                  "examples": {
+                    "emptyText": {
+                      "summary": "Empty text error",
+                      "value": {
+                        "detail": "text cannot be empty."
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Server or Ollama error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                  },
+                  "examples": {
+                    "ollamaError": {
+                      "summary": "Ollama connectivity or config error",
+                      "value": {
+                        "detail": "Ollama error: <error message here>"
+                      }
+                    },
+                    "invalidJson": {
+                      "summary": "Invalid JSON from model",
+                      "value": {
+                        "detail": "Model did not return valid JSON."
+                      }
+                    },
+                    "genericError": {
+                      "summary": "Generic summarization failure",
+                      "value": {
+                        "detail": "Summarization failed: <details>"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "TextSummarizeRequest": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "style": {
+              "type": "string",
+              "enum": ["short", "detailed"],
+              "default": "short"
+            }
+          },
+          "required": ["text"]
+        },
+        "TextSummarizeResponse": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "key_points": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["summary"]
+        },
+        "ErrorResponse": {
+          "type": "object",
+          "properties": {
+            "detail": {
+              "type": "string"
+            }
+          },
+          "required": ["detail"]
+        }
+      }
+    }
+  }
+  
