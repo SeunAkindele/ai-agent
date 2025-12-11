@@ -6,3 +6,4 @@ pydantic
 pypdf
 pandas
 httpx
+bs4
