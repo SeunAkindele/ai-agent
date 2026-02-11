@@ -1,0 +1,2 @@
+# services/rag-service/requirements.txt
+mcp
