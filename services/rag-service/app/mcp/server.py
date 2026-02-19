@@ -1,9 +1,10 @@
-from mcp.server.fastmcp import FastMCP
-from app.rag.container import pipeline
+from fastmcp.server.fastmcp import FastMCP
+from app.mcp.tools import rag as rag_tools
 
-mcp = FastMCP("rag-service")
+mcp = FastMCP(
+    name="rag-service",
+    instructions="RAG question answering tool service"
+)
 
-@mcp.tool()
-def ask(question: str) -> str:
-    """Answer a question using RAG"""
-    return pipeline.run(question)
+# exposes rag.ask
+mcp.tool()(rag_tools.ask)

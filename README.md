@@ -1,140 +1,170 @@
 # AI Agent
 
-Microservices-based AI platform that delivers Retrieval-Augmented Generation (RAG), document ingestion, media processing (audio transcription, image description/OCR), and card generation. The gateway API exposes a unified interface, and the RAG service now ships with a Model Context Protocol (MCP) tool so MCP-compatible clients (Claude Desktop, Cursor MCP, etc.) can call the same pipeline without going through HTTP.
+Microservices-based AI platform fronted by a single conversational endpoint. Users send natural-language messages to one API; an intent-based tool router selects the right backend capability — RAG question-answering, media description, card generation — and returns a unified response. Backend services expose their functionality as MCP (Model Context Protocol) tools, so the gateway communicates over MCP rather than bespoke HTTP contracts.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Gateway API (entry point)                        │
-│  /chat  /health  /media  /upload  →  auth, config, logging               │
-└───────────────┬───────────────┬───────────────┬───────────────┬─────────┘
-                │               │               │               │
-        ┌───────▼───────┐ ┌─────▼─────┐ ┌──────▼──────┐ ┌──────▼──────┐
-        │ RAG Service   │ │ Ingest    │ │ Media       │ │ Cards       │
-        │ /rag/ask      │ │ Service   │ │ Service     │ │ Service     │
-        │ pipeline      │ │ loaders   │ │ transcribe  │ │ generate    │
-        │ measure/refine│ │ chunk/embed│ │ vision/ocr  │ │ validate    │
-        └───────────────┘ └───────────┘ └─────────────┘ └─────────────┘
-                │               │
-        ┌───────▼───────────────▼───────┐
-        │  Shared: ai_shared (schemas,  │
-        │  core, utils)                  │
-        └───────────────────────────────┘
-        ┌───────────────────────────────┐
-        │ Sidecars: cpp-audio, cpp-search│
-        └───────────────────────────────┘
+        User
+         │
+         ▼
+  POST /v1/agent/ask
+         │
+    ┌────▼─────────────────┐
+    │   Gateway API         │
+    │   (tool router)       │
+    │                       │
+    │   intent ──► tool     │
+    └───┬───────┬───────┬───┘
+        │       │       │
+   ┌────▼──┐ ┌─▼────┐ ┌▼───────┐
+   │ RAG   │ │Media │ │Cards   │
+   │ ask   │ │describe│ │generate│
+   └───────┘ └──────┘ └────────┘
+     (MCP)    (MCP)     (MCP)
 ```
 
-- **Gateway API** — Routes chat, health, media, and upload to cards, ingest, media, and RAG clients.
-- **RAG Service** — Modular RAG (query, retrieval, rerank, context, generation, measure/refine). Exposes `POST /rag/ask`.
-- **RAG MCP Tool** — `FastMCP` server in `services/rag-service/app/mcp/server.py` exposing the same RAG pipeline as an MCP tool named `ask`.
-- **Ingest Service** — Loaders (PDF, CSV, URL, image, audio), chunking, embeddings, upsert.
-- **Media Service** — Audio preprocessing/transcription and vision (describe, OCR).
-- **Cards Service** — Card generation and validation pipeline plus persistence.
-- **Shared** — Python package `ai_shared` for configs, schemas, and utilities.
-- **Sidecars** — C++ helpers: `cpp-audio` (normalize, resample, silence trim) and `cpp-search` (BM25 index/tokenizer).
+1. The user sends a message to `POST /v1/agent/ask`.
+2. The **tool router** inspects the message and decides which tool to invoke (`rag`, `media`, `cards`, or `none`).
+3. The gateway calls the chosen backend service over MCP and returns a unified `AgentAskResponse`.
+
+## How the tool router works
+
+The router lives in `services/gateway-api/app/core/tool_router.py`. It uses simple keyword/pattern rules to classify intent:
+
+| Intent | Triggers | Tool |
+|--------|----------|------|
+| Image/audio description | `"describe this image"`, media attachment flag | `media` |
+| Flashcards / quiz | `"make flashcards"`, `"quiz me"` | `cards` |
+| Document ingestion | `"upload"`, `"ingest"`, `"add to knowledge base"` | `ingest` |
+| Knowledge Q&A | Contains `?`, starts with question word | `rag` |
+| Fallback | Everything else | `rag` |
+
+Set the env var `FORCE_TOOL=rag` (or `media`, `cards`) to bypass classification during development.
+
+## Request / Response
+
+**Request** — `POST /v1/agent/ask`
+
+```json
+{
+  "message": "What is Retrieval-Augmented Generation?",
+  "has_media": false,
+  "meta": {}
+}
+```
+
+**Response**
+
+```json
+{
+  "tool_used": "rag",
+  "answer": "RAG is a technique that …",
+  "sources": [{"title": "Doc A", "page": 4, "snippet": "…"}],
+  "latency_ms": 312,
+  "trace_id": "a1b2c3d4e5f6"
+}
+```
+
+`tool_used` tells the caller which backend answered. `sources` and `latency_ms` are populated when the RAG tool is selected; other tools return their own relevant fields as they are implemented.
 
 ## Repository layout
 
 | Path | Description |
 |------|-------------|
-| `services/gateway-api/` | FastAPI gateway; routes and downstream clients |
-| `services/rag-service/` | RAG API and pipeline (query → retrieve → rerank → context → generate → measure/refine) |
-| `services/rag-service/app/mcp/` | MCP server exposing the RAG `ask` tool |
-| `services/ingest-service/` | Ingest API and pipeline (load → chunk → embed → upsert) |
-| `services/media-service/` | Media API; audio transcription and vision (describe, OCR) |
-| `services/cards-service/` | Cards API; generate and validate |
+| `services/gateway-api/` | FastAPI gateway — single `/v1/agent/ask` endpoint, tool router, MCP clients |
+| `services/gateway-api/app/core/tool_router.py` | Intent classifier that maps a user message to a tool name |
+| `services/gateway-api/app/clients/rag_client.py` | MCP client that connects to the RAG service and calls the `ask` tool |
+| `services/rag-service/` | RAG pipeline service (query, retrieve, rerank, context, generate, measure/refine) |
+| `services/rag-service/app/mcp/` | FastMCP server and tool registration |
+| `services/rag-service/app/mcp/tools/rag.py` | MCP tool implementation — `ask(question) -> dict` |
+| `services/rag-service/app/rag/pipeline.py` | Core RAG pipeline (parse → retrieve → generate) |
+| `services/media-service/` | Audio transcription and image description/OCR (MCP tool: `describe`) |
+| `services/cards-service/` | Card generation and validation (MCP tool: `generate`) |
+| `services/ingest-service/` | Document ingestion pipeline (load → chunk → embed → upsert) |
 | `shared/python/ai_shared/` | Shared Python library (schemas, core, utils) |
-| `sidecars/cpp-audio/` | C++ audio preprocessing (normalize, resample, silence trim, WAV) |
+| `sidecars/cpp-audio/` | C++ audio preprocessing (normalize, resample, silence trim) |
 | `sidecars/cpp-search/` | C++ BM25/search (index, tokenizer) |
-| `docs/openapi/` | OpenAPI specs: `gateway`, `rag`, `ingest`, `media`, `cards` |
 | `infra/` | Docker Compose and dev scripts |
 
 ## Requirements
 
-- Python 3.x (service-specific dependencies live in each `requirements.txt`)
+- Python 3.11+
 - Docker (compose stack + sidecars)
-- CMake (build the C++ sidecars)
-- MCP CLI/runtime (`pip install mcp` or `pip install -r services/rag-service/requirements.txt`)
+- `mcp` and `fastmcp` Python packages (included in each service's `requirements.txt`)
+- CMake (only if building the C++ sidecars)
 
 ## Quick start
 
-1. **Environment**  
-   Copy `.env.example` to `.env` and fill the variables required for your environment (only `.env` is ignored by Git).
+1. **Environment** — copy `.env.example` to `.env` (if provided), or create one with at least:
 
-2. **Run everything with Docker**  
+   ```
+   RAG_BASE_URL=http://localhost:8001
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   pip install -r services/gateway-api/requirements.txt
+   pip install -r services/rag-service/requirements.txt
+   ```
+
+3. **Start the RAG MCP server**
+
+   ```bash
+   cd services/rag-service
+   mcp dev app/mcp/server.py
+   ```
+
+   This registers the `ask` tool over stdio. The gateway's `RAGClient` connects to it automatically.
+
+4. **Start the gateway**
+
+   ```bash
+   cd services/gateway-api
+   uvicorn app.main:app --reload --port 8000
+   ```
+
+5. **Ask a question**
+
+   ```bash
+   curl -X POST http://localhost:8000/v1/agent/ask \
+     -H "Content-Type: application/json" \
+     -d '{"message": "What is Retrieval-Augmented Generation?"}'
+   ```
+
+6. **Run everything with Docker** (alternative)
+
    ```bash
    cd infra
    docker-compose up -d
    ```
-   Use `infra/scripts/dev.sh` if your workflow automates per-service rebuilds.
 
-3. **Run the RAG HTTP API locally**  
-   ```bash
-   cd services/rag-service
-   pip install -r requirements.txt
-   uvicorn app.main:app --reload
-   ```
-   Send `POST /rag/ask` with `{"question": "What is RAG?"}` to exercise the pipeline.
+## Current tool status
 
-4. **Install the shared Python library in editable mode**  
-   ```bash
-   pip install -e shared/
-   ```
+| Tool | Status | Backend service |
+|------|--------|-----------------|
+| `rag.ask` | Implemented | `services/rag-service` |
+| `media.describe` | Placeholder — routed but not yet wired | `services/media-service` |
+| `cards.generate` | Placeholder — routed but not yet wired | `services/cards-service` |
+| `ingest` | Placeholder — routed but not yet wired | `services/ingest-service` |
 
-5. **Build the C++ sidecars (optional unless you call them)**  
-   ```bash
-   cd sidecars/cpp-audio && mkdir build && cd build && cmake .. && make
-   cd ../../cpp-search && mkdir build && cd build && cmake .. && make
-   ```
+The gateway returns a descriptive message when a placeholder tool is selected, so the single-endpoint contract is already stable.
 
-6. **Run the RAG MCP tool**  
-   ```bash
-   cd services/rag-service
-   pip install -r requirements.txt  # installs the `mcp` package
-   mcp dev app/mcp/server.py
-   ```
-   `mcp dev` loads `app/mcp/server.py`, registers the `ask` tool, and serves it over stdio/WebSocket depending on the client. Point your MCP client at this script (see “MCP access” below).
+## Adding a new tool
 
-## MCP access
-
-- **Tooling surface** — The server exported from `services/rag-service/app/mcp/server.py` defines a single tool named `ask` that simply forwards to the existing `RAGPipeline`. The tool signature makes it ideal for Claude Desktop, Cursor MCP, or any MCP-compliant IDE/chat client.
-- **Run directly** — Use `mcp dev app/mcp/server.py` (stdion) for local development or wrap it in `uv run mcp dev ...` if you prefer virtual environments. The working directory must stay inside `services/rag-service` so imports like `app.rag.container` resolve.
-- **Register with clients** — Point MCP-aware clients at the command above. Example (Claude Desktop `claude_desktop_config.json` excerpt):
-  ```json
-  {
-    "mcpServers": {
-      "rag-service": {
-        "command": "mcp",
-        "args": ["dev", "/ABSOLUTE/PATH/TO/services/rag-service/app/mcp/server.py"],
-        "cwd": "/ABSOLUTE/PATH/TO/services/rag-service"
-      }
-    }
-  }
-  ```
-- **Available tool** — One tool today (`ask`) with signature `question: str -> str`. Extend `app/mcp/server.py` with additional `@mcp.tool()` definitions as more pipeline capabilities need to surface.
-
-## API overview
-
-| Surface | Purpose |
-|---------|---------|
-| **Gateway** | Chat, health, media, upload endpoints; proxies to backend services |
-| **RAG HTTP API** | `POST /rag/ask` — question in, RAG-generated answer out |
-| **RAG MCP Tool** | `ask(question: str)` — same RAG pipeline exposed over MCP |
-| **Ingest** | Document ingestion and indexing pipeline |
-| **Media** | Audio transcription and image description/OCR |
-| **Cards** | Card generation and validation |
-
-OpenAPI definitions sit under `docs/openapi/` (`gateway.openapi.json`, `rag.openapi.json`, etc.).
+1. Create an MCP tool function in the target service (e.g. `services/media-service/app/mcp/tools/media.py`).
+2. Register it in that service's `FastMCP` server.
+3. Add a client in `services/gateway-api/app/clients/` that connects to the new MCP server and calls the tool.
+4. Wire the client into `routes_chat.py` under the matching `tool ==` branch.
+5. (Optional) Add new trigger keywords to `tool_router.py`.
 
 ## Development
 
-- Each service owns its own `requirements.txt` and `Dockerfile`; install only what you need.
-- Shared types/utilities live in `shared/python/ai_shared`; import them from services to keep contracts aligned.
-- RAG pipeline modules live under `services/rag-service/app/rag/modules/` (query, retrieval, rerank, context, generation, measure, refine) and are re-used by both the HTTP API and the MCP server via `app/rag/container.py`.
-- Ingest pipeline pieces: loaders (`app/pipeline/loaders/`), chunking/embedding/upsert in `app/pipeline/`.
+- Each service owns its own `requirements.txt` and `Dockerfile`.
+- Shared types live in `shared/python/ai_shared/` — import them to keep contracts aligned across services.
+- The RAG pipeline modules live under `services/rag-service/app/rag/modules/` (query, retrieval, rerank, context, generation, measure, refine).
 
 ## License
 
-See the repository’s license file if present.
+See the repository's license file if present.
