@@ -1,5 +1,5 @@
 # services/rag-service/requirements.txt
 fastapi==0.115.0
-uvicorn==0.30.6
-pydantic==2.8.2
-fastmcp==0.3.0
+uvicorn==0.41.0
+pydantic==2.11.10
+fastmcp==3.0.1

@@ -1,4 +1,4 @@
-from fastmcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from app.mcp.tools import rag as rag_tools
 
 mcp = FastMCP(
@@ -8,3 +8,5 @@ mcp = FastMCP(
 
 # exposes rag.ask
 mcp.tool()(rag_tools.ask)
+if __name__ == "__main__":
+    mcp.run()
