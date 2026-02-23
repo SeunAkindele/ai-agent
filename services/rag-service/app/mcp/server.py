@@ -8,5 +8,3 @@ mcp = FastMCP(
 
 # exposes rag.ask
 mcp.tool()(rag_tools.ask)
-if __name__ == "__main__":
-    mcp.run()

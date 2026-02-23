@@ -1,15 +1,43 @@
-from fastapi import APIRouter
-from app.schemas.rag_request import AskRequest
-from app.schemas.rag_response import AskResponse
-from app.rag.container import run_rag
+import inspect
+from typing import Any, Dict
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from app.mcp.tools import rag as rag_tools
 
 router = APIRouter()
 
-@router.post(
-    "/ask",
-    response_model=AskResponse,
-    summary="Ask a question using RAG",
-    description="Submit a question and receive an answer generated via the RAG pipeline."
-)
-def ask_question(payload: AskRequest):
-    return run_rag(payload.question)
+
+class AskRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+
+
+@router.get("/health")
+async def health() -> Dict[str, Any]:
+    return {"ok": True, "service": "rag-service"}
+
+
+@router.post("/ask")
+async def ask(payload: AskRequest) -> Dict[str, Any]:
+    """
+    HTTP wrapper around the same rag logic used by MCP tools.
+    """
+    try:
+        result = rag_tools.ask(payload.question)
+
+        # Supports both async and sync tool functions
+        if inspect.isawaitable(result):
+            result = await result
+
+        if not isinstance(result, dict):
+            raise RuntimeError("rag_tools.ask must return a dict")
+
+        return {
+            "answer": result.get("answer", "") or "",
+            "sources": result.get("sources", []) or [],
+            "latency_ms": result.get("latency_ms", None),
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RAG processing failed: {e}")
