@@ -1,37 +1,42 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional
 
-# This import depends on the MCP python client you’re using.
-# Common pattern is an async client that connects to the MCP server transport.
-# Replace with your actual MCP client import.
-from mcp.client.session import ClientSession
-from mcp.client.stdio import stdio_client
+from app.clients.mcp_service_client import MCPServiceClient
+
 
 class RAGClient:
-    """
-    Calls MCP tool: rag.ask
-    The MCP server is your rag-service 'server.py' that exposes rag.ask.
-    """
+    def __init__(
+        self,
+        endpoint_url: str,
+        auth_token: Optional[str] = None,
+        origin: str = "http://gateway-api.internal",
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        self._mcp = MCPServiceClient(
+            endpoint_url=endpoint_url,
+            auth_token=auth_token,
+            origin=origin,
+            timeout_seconds=timeout_seconds,
+        )
 
-    def __init__(self, rag_mcp_cmd: Optional[list[str]] = None):
-        # Command used to start/connect to the rag-service MCP server via stdio.
-        # In docker you may connect differently (http transport, websocket, etc).
-        self.rag_mcp_cmd = rag_mcp_cmd or ["python", "-m", "app.server"]
+    async def start(self) -> None:
+        await self._mcp.start()
 
-    async def ask(self, question: str) -> Dict[str, Any]:
-        """
-        Calls MCP tool rag.ask(question) and returns normalized output.
-        """
-        async with stdio_client(self.rag_mcp_cmd) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
+    async def stop(self) -> None:
+        await self._mcp.stop()
 
-                # IMPORTANT: tool name must match what your rag-service registers: rag.ask
-                result = await session.call_tool("ask", {"question": question})
-                # Some MCP clients return {"content": ...} or structured content
-                data = result.get("content", result)
-
+    async def ask(self, question: str, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        payload = {
+            "question": question,
+            "meta": meta or {},
+        }
+        data = await self._mcp.call_tool("ask", payload)
         return {
             "answer": data.get("answer", "") or "",
             "sources": data.get("sources", []) or [],
-            "latency_ms": data.get("latency_ms", None),
+            "latency_ms": data.get("latency_ms"),
         }
+
+    async def list_tools(self) -> list[str]:
+        return await self._mcp.list_tools()

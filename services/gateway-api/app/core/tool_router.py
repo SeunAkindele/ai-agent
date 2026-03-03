@@ -1,44 +1,57 @@
-import re
-from typing import Literal
-
-ToolName = Literal["rag", "media", "cards", "ingest", "none"]
-
-# simple triggers (rules-based). You can later replace with LLM intent classifier.
-MEDIA_TRIGGERS = ["describe this image", "what is in this image", "describe the photo", "describe the picture"]
-CARDS_TRIGGERS = ["make flashcards", "generate flashcards", "create cards", "turn into flashcards", "quiz me", "make a quiz"]
-INGEST_TRIGGERS = ["upload", "ingest", "train on", "add to knowledge base", "index this", "save this document"]
-
-QUESTION_START = r"^(what|who|why|how|when|where|define|explain|meaning)\b"
+from app.core.tool_decision import ToolDecision
 
 
-def choose_tool(user_text: str, has_media: bool = False) -> ToolName:
-    """
-    Decide which tool to use based on the user's message and context.
-    - has_media: True if user attached image/audio/video (your upload flow can set this)
-    """
-    text = (user_text or "").strip().lower()
+def choose_tool(message: str, has_media: bool = False) -> ToolDecision:
+    text = (message or "").strip().lower()
+
     if not text:
-        return "none"
+        return ToolDecision(
+            tool_name="none",
+            confidence=0.10,
+            reason="empty_message",
+        )
 
-    # 1) If media attached or message clearly asks for image description
     if has_media:
-        return "media"
-    if any(t in text for t in MEDIA_TRIGGERS):
-        return "media"
+        return ToolDecision(
+            tool_name="media",
+            confidence=0.95,
+            reason="request_contains_media",
+        )
 
-    # 2) Flashcards / quiz intent
-    if any(t in text for t in CARDS_TRIGGERS):
-        return "cards"
+    ingest_keywords = [
+        "upload", "ingest", "index document", "index file", "re-index"
+    ]
+    if any(word in text for word in ingest_keywords):
+        return ToolDecision(
+            tool_name="ingest",
+            confidence=0.90,
+            reason="document_ingestion_intent",
+        )
 
-    # 3) Ingestion/indexing intent
-    if any(t in text for t in INGEST_TRIGGERS):
-        return "ingest"
+    cards_keywords = [
+        "flashcard", "flash card", "quiz card", "study card", "cards"
+    ]
+    if any(word in text for word in cards_keywords):
+        return ToolDecision(
+            tool_name="cards",
+            confidence=0.82,
+            reason="cards_generation_intent",
+        )
 
-    # 4) Default knowledge Q/A -> RAG
-    if "?" in text:
-        return "rag"
-    if re.match(QUESTION_START, text):
-        return "rag"
+    rag_keywords = [
+        "what is", "who is", "explain", "tell me about", "how does",
+        "why is", "summarize", "search", "find information", "answer this",
+        "question about", "knowledge base", "document", "docs"
+    ]
+    if any(word in text for word in rag_keywords):
+        return ToolDecision(
+            tool_name="rag",
+            confidence=0.80,
+            reason="knowledge_retrieval_intent",
+        )
 
-    # 5) Fallback: in most assistant products, still answer with RAG
-    return "rag"
+    return ToolDecision(
+        tool_name="none",
+        confidence=0.20,
+        reason="no_matching_tool",
+    )

@@ -1,0 +1,207 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Gateway API",
+    "version": "0.1.0",
+    "description": "AI Agent Gateway API – routes user messages to the appropriate tool (RAG, media, cards, ingest)."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Local"
+    }
+  ],
+  "paths": {
+    "/v1/agent/ask": {
+      "post": {
+        "summary": "Ask the AI agent",
+        "description": "Send a question or prompt to the AI agent. The gateway routes the message to the appropriate tool and returns the result.",
+        "operationId": "agent_ask",
+        "tags": ["Agent"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAskRequest"
+              },
+              "example": {
+                "message": "What is the refund policy?",
+                "has_media": false,
+                "meta": {
+                  "session_id": "abc123"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAskResponse"
+                },
+                "examples": {
+                  "rag": {
+                    "summary": "RAG tool response",
+                    "value": {
+                      "tool_used": "rag",
+                      "answer": "The refund policy allows returns within 30 days.",
+                      "sources": [
+                        {
+                          "document": "policy.pdf",
+                          "page": 3,
+                          "score": 0.92
+                        }
+                      ],
+                      "latency_ms": 245,
+                      "trace_id": "a1b2c3d4e5f6"
+                    }
+                  },
+                  "none": {
+                    "summary": "No tool selected",
+                    "value": {
+                      "tool_used": "none",
+                      "answer": "No tool selected. Please ask a question or provide more context.",
+                      "sources": [],
+                      "latency_ms": null,
+                      "trace_id": "f6e5d4c3b2a1"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": ["body", "message"],
+                      "msg": "ensure this value has at least 1 characters",
+                      "type": "value_error.any_str.min_length"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Downstream service failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPError"
+                },
+                "example": {
+                  "detail": "RAG service failed: connection refused"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentAskRequest": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The user's question or prompt."
+          },
+          "has_media": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the request includes media attachments."
+          },
+          "meta": {
+            "type": "object",
+            "nullable": true,
+            "default": null,
+            "description": "Arbitrary metadata dictionary.",
+            "additionalProperties": true
+          }
+        }
+      },
+      "AgentAskResponse": {
+        "type": "object",
+        "required": ["tool_used", "answer", "trace_id"],
+        "properties": {
+          "tool_used": {
+            "type": "string",
+            "enum": ["rag", "media", "cards", "ingest", "none"],
+            "description": "The tool that handled the request."
+          },
+          "answer": {
+            "type": "string",
+            "description": "The agent's response text."
+          },
+          "sources": {
+            "type": "array",
+            "default": [],
+            "description": "List of source documents (populated when tool_used is rag).",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "latency_ms": {
+            "type": "integer",
+            "nullable": true,
+            "default": null,
+            "description": "Processing latency in milliseconds."
+          },
+          "trace_id": {
+            "type": "string",
+            "description": "Unique trace ID for debugging/observability."
+          }
+        }
+      },
+      "HTTPValidationError": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "loc": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "msg": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "HTTPError": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

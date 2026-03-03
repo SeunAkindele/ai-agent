@@ -1,12 +1,22 @@
-import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# --- RAG service HTTP base URL
-# local dev: http://localhost:8001
-# docker compose: http://rag-service:8001
-RAG_BASE_URL = os.getenv("RAG_BASE_URL", "http://localhost:8001")
 
-# http client timeout
-HTTP_TIMEOUT_S = float(os.getenv("HTTP_TIMEOUT_S", "20"))
+class Settings(BaseSettings):
+    app_name: str = "gateway-api"
+    environment: str = "dev"
+    log_level: str = "INFO"
+    api_prefix: str = "/v1"
 
-# optional: allow forcing a tool (debug)
-FORCE_TOOL = os.getenv("FORCE_TOOL", "").strip().lower()  # e.g. "rag"
+    rag_mcp_url: str
+    internal_mcp_token: str
+    internal_mcp_origin: str = "http://gateway-api.internal"
+    mcp_timeout_seconds: float = 30.0
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+settings = Settings()
