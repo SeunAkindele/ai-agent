@@ -11,12 +11,32 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./services/rag-service/migrations:/docker-entrypoint-initdb.d
+      - ./services/ingest-service/app/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app_user -d ragdb"]
       interval: 5s
       timeout: 3s
       retries: 5
+
+  ingest-service:
+    build:
+      context: ./services/ingest-service
+    container_name: ai-agent-ingest-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./services/ingest-service/.env
+    environment:
+      POSTGRES_DSN: postgresql://app_user:app_password@postgres:5432/ragdb
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   rag-service:
     build:
