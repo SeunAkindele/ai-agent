@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rag-service-secret
+  namespace: ai-agent
+type: Opaque
+stringData:
+  INTERNAL_MCP_TOKEN: dev-internal-token
+  POSTGRES_DSN: postgresql://app_user:app_password@postgres:5432/ragdb
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-service-config
+  namespace: ai-agent
+data:
+  LOG_LEVEL: INFO
+  ALLOWED_MCP_ORIGINS_RAW: http://gateway-api.internal
+  PGVECTOR_DIMENSION: "128"
+  RETRIEVAL_TOP_K: "5"
+  MAX_CONTEXT_CHARS: "6000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-service
+  namespace: ai-agent
+spec:
+  selector:
+    app: rag-service
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-service
+  namespace: ai-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-service
+  template:
+    metadata:
+      labels:
+        app: rag-service
+    spec:
+      containers:
+        - name: rag-service
+          image: your-registry/rag-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8001
+          env:
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: rag-service-config
+                  key: LOG_LEVEL
+            - name: ALLOWED_MCP_ORIGINS_RAW
+              valueFrom:
+                configMapKeyRef:
+                  name: rag-service-config
+                  key: ALLOWED_MCP_ORIGINS_RAW
+            - name: PGVECTOR_DIMENSION
+              valueFrom:
+                configMapKeyRef:
+                  name: rag-service-config
+                  key: PGVECTOR_DIMENSION
+            - name: RETRIEVAL_TOP_K
+              valueFrom:
+                configMapKeyRef:
+                  name: rag-service-config
+                  key: RETRIEVAL_TOP_K
+            - name: MAX_CONTEXT_CHARS
+              valueFrom:
+                configMapKeyRef:
+                  name: rag-service-config
+                  key: MAX_CONTEXT_CHARS
+            - name: INTERNAL_MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rag-service-secret
+                  key: INTERNAL_MCP_TOKEN
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: rag-service-secret
+                  key: POSTGRES_DSN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 8
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"

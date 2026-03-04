@@ -1,9 +1,0 @@
-fastapi
-uvicorn[standard]
-python-dotenv
-openai
-pydantic
-pypdf
-pandas
-httpx
-bs4
