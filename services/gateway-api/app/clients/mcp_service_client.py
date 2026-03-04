@@ -33,13 +33,17 @@ class MCPServiceClient:
         timeout_seconds: float = 30.0,
         breaker_threshold: int = 3,
         breaker_cooldown_seconds: int = 20,
+        start_retries: int = 6,
+        start_retry_delay: float = 2.0,
     ) -> None:
-        self.endpoint_url = endpoint_url if endpoint_url.endswith("/") else endpoint_url + "/"
+        self.endpoint_url = endpoint_url.rstrip("/")
         self.auth_token = auth_token
         self.origin = origin
         self.timeout_seconds = timeout_seconds
         self.breaker_threshold = breaker_threshold
         self.breaker_cooldown_seconds = breaker_cooldown_seconds
+        self.start_retries = start_retries
+        self.start_retry_delay = start_retry_delay
 
         self._http_client: Optional[httpx.AsyncClient] = None
         self._stream_cm = None
@@ -57,6 +61,29 @@ class MCPServiceClient:
         if self._started:
             return
 
+        last_err: Exception | None = None
+        for attempt in range(1, self.start_retries + 1):
+            try:
+                await self._connect()
+                self._started = True
+                logger.info("MCP client started for %s", self.endpoint_url)
+                return
+            except Exception as exc:
+                last_err = exc
+                await self._cleanup_partial()
+                if attempt < self.start_retries:
+                    delay = self.start_retry_delay * attempt
+                    logger.warning(
+                        "MCP connect attempt %d/%d failed for %s: %s — retrying in %.1fs",
+                        attempt, self.start_retries, self.endpoint_url, exc, delay,
+                    )
+                    await asyncio.sleep(delay)
+
+        raise RuntimeError(
+            f"Failed to connect to {self.endpoint_url} after {self.start_retries} attempts: {last_err}"
+        ) from last_err
+
+    async def _connect(self) -> None:
         headers = {"Origin": self.origin}
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
@@ -76,32 +103,42 @@ class MCPServiceClient:
         self._session = await self._session_cm.__aenter__()
         await self._session.initialize()
 
-        self._started = True
-        logger.info("MCP client started for %s", self.endpoint_url)
+    async def _cleanup_partial(self) -> None:
+        """Tear down any partially-opened resources after a failed connect."""
+        for cleanup in [
+            self._close_session,
+            self._close_stream,
+            self._close_http,
+        ]:
+            await cleanup()
 
-    async def stop(self) -> None:
+    async def _close_session(self) -> None:
         if self._session_cm is not None:
             try:
                 await self._session_cm.__aexit__(None, None, None)
             except Exception:
-                logger.exception("Error while closing MCP session")
+                pass
             self._session_cm = None
             self._session = None
 
+    async def _close_stream(self) -> None:
         if self._stream_cm is not None:
             try:
                 await self._stream_cm.__aexit__(None, None, None)
             except Exception:
-                logger.exception("Error while closing MCP stream")
+                pass
             self._stream_cm = None
 
+    async def _close_http(self) -> None:
         if self._http_client is not None:
             try:
                 await self._http_client.aclose()
             except Exception:
-                logger.exception("Error while closing HTTP client")
+                pass
             self._http_client = None
 
+    async def stop(self) -> None:
+        await self._cleanup_partial()
         self._started = False
         logger.info("MCP client stopped for %s", self.endpoint_url)
 

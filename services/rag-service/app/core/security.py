@@ -11,7 +11,7 @@ def register_mcp_security_middleware(app: FastAPI, settings: Settings) -> None:
     async def mcp_security_middleware(request: Request, call_next):
         path = request.url.path
 
-        if path.startswith("/mcp"):
+        if path.startswith("/mcp") and path != "/mcp/health":
             origin = request.headers.get("origin")
             if not origin or origin not in settings.allowed_mcp_origins:
                 return JSONResponse(status_code=403, content={"detail": "Invalid Origin"})

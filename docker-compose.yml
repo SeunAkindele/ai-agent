@@ -1,0 +1,56 @@
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-agent-postgres
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password
+      POSTGRES_DB: ragdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/rag-service/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d ragdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rag-service:
+    build:
+      context: ./services/rag-service
+    container_name: ai-agent-rag-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./services/rag-service/.env
+    environment:
+      POSTGRES_DSN: postgresql://app_user:app_password@postgres:5432/ragdb
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  gateway-api:
+    build:
+      context: ./services/gateway-api
+    container_name: ai-agent-gateway-api
+    depends_on:
+      rag-service:
+        condition: service_healthy
+    env_file:
+      - ./services/gateway-api/.env
+    environment:
+      RAG_MCP_URL: http://rag-service:8001/mcp
+    ports:
+      - "8100:8100"
+
+volumes:
+  postgres_data:
