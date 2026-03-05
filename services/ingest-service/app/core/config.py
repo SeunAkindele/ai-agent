@@ -1,23 +1,24 @@
-from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+# config.py
 
+from pydantic import BaseSettings, field_validator
+from pydantic_settings import SettingsConfigDict
+import os
 
 class Settings(BaseSettings):
-    app_name: str = "rag-service"
+    app_name: str = "ingest-service"
     environment: str = "dev"
     log_level: str = "INFO"
-
     http_port: int = 8001
-
+    
     # Security
     internal_mcp_token: str
     allowed_mcp_origins_raw: str = "http://gateway-api.internal"
 
     # Database
     postgres_dsn: str
-    pgvector_dimension: int = 128
+    pgvector_dimension: int = 128  # Ensure vector dimension for embeddings is correctly defined
 
-    # Retrieval
+    # Ingestion settings
     retrieval_top_k: int = 5
     retrieval_min_score: float = 0.0
     max_context_chars: int = 6000

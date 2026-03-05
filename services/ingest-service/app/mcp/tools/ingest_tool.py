@@ -2,24 +2,20 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from app.application.services.rag_service import RAGService
+from app.application.services.ingest_service import IngestService
 from app.mcp.server import mcp
 
-_rag_service: Optional[RAGService] = None
+_ingest_service: Optional[IngestService] = None
 
 
-def set_rag_service(service: RAGService) -> None:
-    global _rag_service
-    _rag_service = service
+def set_ingest_service(service: IngestService) -> None:
+    global _ingest_service
+    _ingest_service = service
 
 
-@mcp.tool(name="ask")
-async def ask(question: str, meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    if _rag_service is None:
-        raise RuntimeError("RAG service not initialized yet")
-    result = await _rag_service.ask(question)
-    return {
-        "answer": result.answer,
-        "sources": [src.model_dump() for src in result.sources],
-        "latency_ms": result.latency_ms,
-    }
+@mcp.tool(name="ingest")
+async def ingest(source: str, data_type: str) -> Dict[str, Any]:
+    if _ingest_service is None:
+        raise RuntimeError("Ingest service not initialized yet")
+    await _ingest_service.ingest(source, data_type)
+    return {"message": "Ingested successfully"}

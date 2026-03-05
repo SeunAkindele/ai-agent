@@ -1,3 +1,3 @@
 from fastmcp import FastMCP
 
-mcp = FastMCP("rag-service")
+mcp = FastMCP("ingest-service")

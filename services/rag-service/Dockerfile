@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
+# Copy the .env file so that environment variables are available in the container
+COPY .env .env
+
 USER app
 
 EXPOSE 8001
