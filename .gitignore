@@ -49,8 +49,8 @@ Thumbs.db
 *.swp
 
 # service environment variables
-services/gateway-api/.env
-services/rag-service/.env
-services/media-service/.env
-services/cards-service/.env
-services/ingest-service/.env
+# services/gateway-api/.env
+# services/rag-service/.env
+# services/media-service/.env
+# services/cards-service/.env
+# services/ingest-service/.env
